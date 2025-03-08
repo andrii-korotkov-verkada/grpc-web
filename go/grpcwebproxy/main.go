@@ -17,6 +17,7 @@ import (
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/mwitkow/go-conntrack"
 	"github.com/mwitkow/grpc-proxy/proxy"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -64,7 +65,6 @@ func main() {
 	}
 
 	logrus.SetOutput(os.Stdout)
-	logEntry := logrus.NewEntry(logrus.StandardLogger())
 
 	if *flagAllowAllOrigins && len(*flagAllowedOrigins) != 0 {
 		logrus.Fatal("Ambiguous --allow_all_origins and --allow_origins configuration. Either set --allow_all_origins=true OR specify one or more origins to whitelist with --allow_origins, not both.")
@@ -72,7 +72,7 @@ func main() {
 
 	backendConn := dialBackendOrFail()
 
-	grpcServer := buildGrpcProxyServer(backendConn, logEntry)
+	grpcServer := buildGrpcProxyServer(backendConn)
 	errChan := make(chan error)
 
 	allowedOrigins := makeAllowedOrigins(*flagAllowedOrigins)
@@ -200,7 +200,7 @@ func serveServer(server *http.Server, listener net.Listener, name string, errCha
 	}()
 }
 
-func buildGrpcProxyServer(backendConn *grpc.ClientConn, logger *logrus.Entry) *grpc.Server {
+func buildGrpcProxyServer(backendConn *grpc.ClientConn) *grpc.Server {
 	// gRPC-wide changes.
 	grpc.EnableTracing = true
 
@@ -219,6 +219,8 @@ func buildGrpcProxyServer(backendConn *grpc.ClientConn, logger *logrus.Entry) *g
 	}
 
 	serverMetrics := grpc_prometheus.NewServerMetrics()
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(serverMetrics)
 
 	// Server with logging and monitoring enabled.
 	return grpc.NewServer(
